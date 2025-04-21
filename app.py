@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# IVA por país (incluso no preço final)
 TAXAS_IVA = {
     "Portugal": 0.23,
     "Brasil": 0.17,
@@ -16,51 +17,52 @@ TAXAS_IVA = {
     "Países Baixos": 0.21
 }
 
-def calcular(valor, tipo_cartao, pais):
+def calcular(valor_final, tipo_cartao, pais):
     iva = TAXAS_IVA[pais]
-    valor_com_iva = valor * (1 + iva)
+    valor_sem_iva = valor_final / (1 + iva)  # valor líquido sem IVA
+
     taxa_percentual = 0.014 if tipo_cartao == "Europeu" else 0.029
     taxa_fixa = 0.25
-    taxa_stripe = valor_com_iva * taxa_percentual + taxa_fixa
-    receita_liquida = valor_com_iva - taxa_stripe
-    perda_total = valor_com_iva - receita_liquida
-    return round(valor_com_iva, 2), round(taxa_stripe, 2), round(receita_liquida, 2), round(perda_total, 2)
+    taxa_stripe = valor_sem_iva * taxa_percentual + taxa_fixa
+    valor_liquido_final = valor_sem_iva - taxa_stripe
+
+    return round(valor_sem_iva, 2), round(taxa_stripe, 2), round(valor_liquido_final, 2), round(valor_final - valor_liquido_final, 2)
 
 st.set_page_config(page_title="Calculadora Stripe + IVA", page_icon="💳", layout="centered")
-st.title("💳 Calculadora Stripe com IVA")
-st.markdown("Simula quanto recebes após as **taxas do Stripe + IVA local**.")
+st.title("💳 Calculadora Stripe com IVA Incluído")
+st.markdown("Simula quanto recebes após recolher IVA e pagar taxas Stripe.")
 
 # Entradas
-valor = st.number_input("💰 Valor base da subscrição (€)", min_value=1.0, value=10.0, step=1.0)
+valor_final = st.number_input("💰 Preço final cobrado ao cliente (€)", min_value=1.0, value=10.0, step=1.0)
 quantidade = st.number_input("📦 Quantidade de subscrições", min_value=1, value=1, step=1)
 tipo_cartao = st.selectbox("🌍 Tipo de cartão", ["Europeu", "Internacional"])
 pais = st.selectbox("🌐 País do comprador", list(TAXAS_IVA.keys()))
 
 if st.button("Calcular"):
-    valor_com_iva, taxa_stripe, receita_liquida, perda_total = calcular(valor, tipo_cartao, pais)
-    receita_total = receita_liquida * quantidade
+    valor_sem_iva, taxa_stripe, valor_liquido_final, perda_total = calcular(valor_final, tipo_cartao, pais)
+    receita_total = valor_liquido_final * quantidade
     perda_total_global = perda_total * quantidade
 
-    st.write(f"🔸 Valor com IVA: €{valor_com_iva}")
+    st.write(f"🔸 Valor sem IVA: €{valor_sem_iva}")
     st.write(f"💸 Taxa Stripe: €{taxa_stripe}")
-    st.write(f"✅ Receita líquida (por unidade): €{receita_liquida}")
+    st.write(f"✅ Receita líquida por subscrição: €{valor_liquido_final}")
     st.success(f"🧾 Receita líquida total: €{receita_total}")
-    st.error(f"📉 Perda total (impostos + taxas): €{perda_total_global}")
+    st.error(f"📉 Perda total (IVA + Stripe): €{perda_total_global}")
 
 # Comparação por país
 st.subheader("📊 Comparação de perdas por país")
 tipo_selecionado = st.radio("Selecionar tipo de cartão para comparação:", ["Europeu", "Internacional"])
 
 dados = []
-for p, iva in TAXAS_IVA.items():
-    v_iva, taxa, r_liquida, perda = calcular(valor, tipo_selecionado, p)
-    dados.append({"País": p, "Perda (€)": perda})
+for p in TAXAS_IVA.keys():
+    valor_sem_iva, taxa, r_liquida, perda = calcular(valor_final, tipo_selecionado, p)
+    dados.append({"País": p, "Perda Total (€)": perda})
 
-df = pd.DataFrame(dados).sort_values(by="Perda (€)", ascending=False)
+df = pd.DataFrame(dados).sort_values(by="Perda Total (€)", ascending=False)
 
 # Gráfico
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.bar(df["País"], df["Perda (€)"], color="tomato")
+ax.bar(df["País"], df["Perda Total (€)"], color="orange")
 ax.set_title("📉 Perda Total por País (IVA + Stripe)", fontsize=14)
 ax.set_ylabel("Perda (€)")
 ax.set_xlabel("País")
@@ -68,7 +70,7 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 st.pyplot(fig)
 
-# Exportação dos dados e gráfico
+# Exportação
 markdown = df.to_markdown(index=False)
 with open("comparacao_perdas.md", "w") as f:
     f.write("# Comparação de Perdas por País\n\n")
