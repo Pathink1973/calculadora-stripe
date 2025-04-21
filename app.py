@@ -1,109 +1,84 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
-# Tabela de IVA por país
 TAXAS_IVA = {
     "Portugal": 0.23,
     "Brasil": 0.17,
     "Estados Unidos": 0.00,
     "Espanha": 0.21,
     "França": 0.20,
-    "Alemanha": 0.19
+    "Alemanha": 0.19,
+    "Japão": 0.10,
+    "Canadá": 0.05,
+    "Itália": 0.22,
+    "Países Baixos": 0.21
 }
 
-def calcular_receita_liquida(valor_bruto, tipo_cartao, pais):
-    iva = TAXAS_IVA.get(pais, 0.0)
-    valor_com_iva = valor_bruto * (1 + iva)
-
-    if tipo_cartao == "Europeu":
-        taxa_percentual = 0.014
-    elif tipo_cartao == "Internacional":
-        taxa_percentual = 0.029
-    else:
-        taxa_percentual = 0.0
-
+def calcular(valor, tipo_cartao, pais):
+    iva = TAXAS_IVA[pais]
+    valor_com_iva = valor * (1 + iva)
+    taxa_percentual = 0.014 if tipo_cartao == "Europeu" else 0.029
     taxa_fixa = 0.25
-    taxa_total = (valor_com_iva * taxa_percentual) + taxa_fixa
-    valor_liquido = valor_com_iva - taxa_total
+    taxa_stripe = valor_com_iva * taxa_percentual + taxa_fixa
+    receita_liquida = valor_com_iva - taxa_stripe
+    perda_total = valor_com_iva - receita_liquida
+    return round(valor_com_iva, 2), round(taxa_stripe, 2), round(receita_liquida, 2), round(perda_total, 2)
 
-    return round(valor_liquido, 2), round(taxa_total, 2), round(valor_com_iva, 2)
+st.set_page_config(page_title="Calculadora Stripe + IVA", page_icon="💳", layout="centered")
+st.title("💳 Calculadora Stripe com IVA")
+st.markdown("Simula quanto recebes após as **taxas do Stripe + IVA local**.")
 
-st.set_page_config(page_title="Calculadora Stripe", page_icon="💳", layout="centered")
-st.title("💳 Calculadora de Taxas Stripe")
-st.markdown("Simula quanto recebes após as taxas do Stripe + IVA.")
+# Entradas
+valor = st.number_input("💰 Valor base da subscrição (€)", min_value=1.0, value=10.0, step=1.0)
+quantidade = st.number_input("📦 Quantidade de subscrições", min_value=1, value=1, step=1)
+tipo_cartao = st.selectbox("🌍 Tipo de cartão", ["Europeu", "Internacional"])
+pais = st.selectbox("🌐 País do comprador", list(TAXAS_IVA.keys()))
 
-# Inputs do utilizador
-st.subheader("Simulação Personalizada")
-valor = st.number_input("Valor da subscrição (€)", min_value=0.0, value=10.0, step=0.5)
-quantidade = st.number_input("Quantidade de subscrições", min_value=1, value=1, step=1)
-tipo_cartao = st.selectbox("Tipo de cartão", ["Europeu", "Internacional"])
-pais = st.selectbox("País do comprador", list(TAXAS_IVA.keys()))
-
-# Cálculo
 if st.button("Calcular"):
-    recebido_unitario, taxa_unitaria, valor_com_iva = calcular_receita_liquida(valor, tipo_cartao, pais)
-    recebido_total = round(recebido_unitario * quantidade, 2)
-    taxa_total = round(taxa_unitaria * quantidade, 2)
+    valor_com_iva, taxa_stripe, receita_liquida, perda_total = calcular(valor, tipo_cartao, pais)
+    receita_total = receita_liquida * quantidade
+    perda_total_global = perda_total * quantidade
 
-    st.success(f"Stripe cobra por subscrição (com IVA): €{taxa_unitaria:.2f}")
-    st.info(f"Recebes líquido por subscrição: €{recebido_unitario:.2f}")
-    st.markdown(f"### Total para {quantidade} subscrições")
-    st.success(f"Taxa total Stripe: €{taxa_total:.2f}")
-    st.info(f"Receita líquida total: €{recebido_total:.2f}")
+    st.write(f"🔸 Valor com IVA: €{valor_com_iva}")
+    st.write(f"💸 Taxa Stripe: €{taxa_stripe}")
+    st.write(f"✅ Receita líquida (por unidade): €{receita_liquida}")
+    st.success(f"🧾 Receita líquida total: €{receita_total}")
+    st.error(f"📉 Perda total (impostos + taxas): €{perda_total_global}")
 
-# Simulação em lote
-st.subheader("Exportar Simulação em Markdown")
-valores = [5, 10, 20, 50, 100, valor]
-tipos = ["Europeu", "Internacional"]
-resultados = []
+# Comparação por país
+st.subheader("📊 Comparação de perdas por país")
+tipo_selecionado = st.radio("Selecionar tipo de cartão para comparação:", ["Europeu", "Internacional"])
 
-for tipo in tipos:
-    for v in sorted(set(valores)):
-        for pais_simulado in TAXAS_IVA.keys():
-            r, t, v_com_iva = calcular_receita_liquida(v, tipo, pais_simulado)
-            resultados.append({
-                "País": pais_simulado,
-                "Tipo de Cartão": tipo,
-                "Valor Base (€)": v,
-                "Valor com IVA (€)": v_com_iva,
-                "Taxa Stripe (€)": t,
-                "Recebe Líquido (€)": r
-            })
+dados = []
+for p, iva in TAXAS_IVA.items():
+    v_iva, taxa, r_liquida, perda = calcular(valor, tipo_selecionado, p)
+    dados.append({"País": p, "Perda (€)": perda})
 
-df = pd.DataFrame(resultados)
+df = pd.DataFrame(dados).sort_values(by="Perda (€)", ascending=False)
+
+# Gráfico
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.bar(df["País"], df["Perda (€)"], color="tomato")
+ax.set_title("📉 Perda Total por País (IVA + Stripe)", fontsize=14)
+ax.set_ylabel("Perda (€)")
+ax.set_xlabel("País")
+plt.xticks(rotation=45)
+st.pyplot(fig)
+
+# Exportação
 markdown = df.to_markdown(index=False)
-
-# Resumo personalizado
-try:
-    resumo = (
-        f"\n\n## Resumo Personalizado\n\n"
-        f"- País: {pais}\n"
-        f"- Valor base: €{valor:.2f}\n"
-        f"- Valor com IVA: €{valor * (1 + TAXAS_IVA[pais]):.2f}\n"
-        f"- Subscrições: {quantidade}\n"
-        f"- Tipo de Cartão: {tipo_cartao}\n"
-        f"- Receita Líquida Total: €{recebido_total:.2f}\n"
-        f"- Taxa Stripe Total: €{taxa_total:.2f}\n"
-    )
-except:
-    resumo = (
-        f"\n\n## Resumo Personalizado\n\n"
-        f"- País: {pais}\n"
-        f"- Valor base: €{valor:.2f}\n"
-        f"- Subscrições: {quantidade}\n"
-        f"- Tipo de Cartão: {tipo_cartao}\n"
-        f"- Receita Líquida Total: **não calculada**\n"
-        f"- Taxa Stripe Total: **não calculada**\n"
-    )
-
-with open("simulacao_taxas_stripe.md", "w") as f_out:
-    f_out.write("# Simulação de Taxas Stripe\n\n")
-    f_out.write(markdown)
-    f_out.write(resumo)
+with open("comparacao_perdas.md", "w") as f:
+    f.write("# Comparação de Perdas por País\n\n")
+    f.write(markdown)
 
 st.download_button(
-    label="📥 Baixar simulação com resumo",
-    data=open("simulacao_taxas_stripe.md", "rb"),
-    file_name="simulacao_taxas_stripe.md",
+    "📥 Baixar tabela Markdown",
+    data=open("comparacao_perdas.md", "rb"),
+    file_name="comparacao_perdas.md",
     mime="text/markdown"
 )
+
+st.download_button(
+    "🖼️ Baixar gráfico PNG",
+    data=open("/
