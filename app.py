@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -64,13 +65,17 @@ ax.set_title("📉 Perda Total por País (IVA + Stripe)", fontsize=14)
 ax.set_ylabel("Perda (€)")
 ax.set_xlabel("País")
 plt.xticks(rotation=45)
+plt.tight_layout()
 st.pyplot(fig)
 
-# Exportação
+# Exportação dos dados e gráfico
 markdown = df.to_markdown(index=False)
 with open("comparacao_perdas.md", "w") as f:
     f.write("# Comparação de Perdas por País\n\n")
     f.write(markdown)
+
+caminho_grafico = "grafico_perdas.png"
+fig.savefig(caminho_grafico)
 
 st.download_button(
     "📥 Baixar tabela Markdown",
@@ -81,4 +86,7 @@ st.download_button(
 
 st.download_button(
     "🖼️ Baixar gráfico PNG",
-    data=open("/
+    data=open(caminho_grafico, "rb"),
+    file_name="grafico_perdas.png",
+    mime="image/png"
+)
